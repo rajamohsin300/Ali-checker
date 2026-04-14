@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sticker AI Chat</title>
+<style>
+  :root {
+    --bg: #111827;
+    --panel: #1f2937;
+    --user: #3b82f6;
+    --ai: #374151;
+    --text: #f3f4f6;
+    --muted: #9ca3af;
+    --accent: #10b981;
+    --border: #374151;
+  }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    background: var(--panel);
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 18px; font-weight: 600; }
+ .btn {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+ .btn-ghost {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+ .btn:hover { opacity: 0.9; }
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+ .sticker {
+    max-width: 75%;
+    padding: 10px 14px;
+    border-radius: 18px;
+    line-height: 1.4;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    animation: pop 0.2s ease;
+  }
+  @keyframes pop { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+ .user { background: var(--user); align-self: flex-end; border-bottom-right-radius: 4px; }
+ .ai { background: var(--ai); align-self: flex-start; border-bottom-left-radius: 4px; }
+ .error { background: #dc2626; align-self: center; font-size: 14px; }
+ .typing { display: flex; gap: 4px; padding: 12px 16px; }
+ .dot { width: 6px; height: 6px; background: var(--muted); border-radius: 50%; animation: blink 1.4s infinite; }
+ .dot:nth-child(2) { animation-delay: 0.2s; }
+ .dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink { 0%, 60%, 100% { opacity: 0.3; } 30% { opacity: 1; } }
+  #input-bar {
+    background: var(--panel);
+    padding: 12px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+  }
+  #input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 14px;
+    border-radius: 20px;
+    resize: none;
+    max-height: 120px;
+    font-family: inherit;
+  }
+  #settings {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  #settings.show { display: flex; }
+ .modal {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 20px;
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+ .modal h2 { margin-bottom: 16px; }
+ .field { margin-bottom: 14px; }
+ .field label { display: block; font-size: 14px; margin-bottom: 6px; color: var(--muted); }
+ .field input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px;
+    border-radius: 8px;
+    font-family: monospace;
+  }
+ .row { display: flex; gap: 8px; }
+ .row.field { flex: 1; }
+ .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+ .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>💬 Sticker AI</h1>
+    <div>
+      <button class="btn btn-ghost" onclick="exportChat()">Export</button>
+      <button class="btn btn-ghost" onclick="clearChat()">Clear</button>
+      <button class="btn" onclick="toggleSettings()">⚙️ Settings</button>
+    </div>
+  </header>
+
+  <div id="chat"></div>
+
+  <div id="input-bar">
+    <textarea id="input" rows="1" placeholder="Type a message..." onkeydown="handleKey(event)"></textarea>
+    <button class="btn" onclick="sendMessage()">Send</button>
+  </div>
+
+  <div id="settings">
+    <div class="modal">
+      <h2>API Settings</h2>
+      <div class="field">
+        <label>Base URL</label>
+        <input id="baseUrl" placeholder="https://api.z.ai/api/paas/v4">
+        <div class="hint">OpenAI-compatible endpoint. Ex: GLM = https://api.z.ai/api/paas/v4</div>
+      </div>
+      <div class="field">
+        <label>API Key</label>
+        <input id="apiKey" type="password" placeholder="sk-... or your key">
+      </div>
+      <div class="field">
+        <label>Model Name</label>
+        <input id="model" placeholder="glm-4.6">
+        <div class="hint">Ex: glm-4.6, deepseek-coder, gpt-4o-mini</div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Temperature</label>
+          <input id="temp" type="number" step="0.1" min="0" max="2" value="0.7">
+        </div>
+        <div class="field">
+          <label>Max Tokens</label>
+          <input id="maxTokens" type="number" min="1" max="32768" value="4096">
+        </div>
+      </div>
+      <div class="field">
+        <label>System Prompt</label>
+        <input id="system" placeholder="You are a helpful assistant">
+      </div>
+      <div class="actions">
+        <button class="btn btn-ghost" onclick="toggleSettings()">Cancel</button>
+        <button class="btn" onclick="saveSettings()">Save</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const chat = document.getElementById('chat');
+const input = document.getElementById('input');
+const settings = document.getElementById('settings');
+
+let messages = JSON.parse(localStorage.getItem('chat_messages') || '[]');
+let cfg = JSON.parse(localStorage.getItem('chat_config') || '{}');
+
+// Load settings
+function loadSettings() {
+  document.getElementById('baseUrl').value = cfg.baseUrl || 'https://api.z.ai/api/paas/v4';
+  document.getElementById('apiKey').value = cfg.apiKey || '';
+  document.getElementById('model').value = cfg.model || 'glm-4.6';
+  document.getElementById('temp').value = cfg.temp || 0.7;
+  document.getElementById('maxTokens').value = cfg.maxTokens || 4096;
+  document.getElementById('system').value = cfg.system || 'You are a helpful assistant';
+}
+
+// Save settings
+function saveSettings() {
+  cfg = {
+    baseUrl: document.getElementById('baseUrl').value.trim().replace(/\/$/, ''),
+    apiKey: document.getElementById('apiKey').value.trim(),
+    model: document.getElementById('model').value.trim(),
+    temp: parseFloat(document.getElementById('temp').value),
+    maxTokens: parseInt(document.getElementById('maxTokens').value),
+    system: document.getElementById('system').value.trim()
+  };
+  localStorage.setItem('chat_config', JSON.stringify(cfg));
+  toggleSettings();
+  addSticker('Settings saved!', 'ai');
+}
+
+function toggleSettings() {
+  settings.classList.toggle('show');
+  if (settings.classList.contains('show')) loadSettings();
+}
+
+function addSticker(text, who) {
+  const div = document.createElement('div');
+  div.className = `sticker ${who}`;
+  div.textContent = text;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function showTyping() {
+  const div = document.createElement('div');
+  div.className = 'sticker ai typing';
+  div.id = 'typing';
+  div.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function hideTyping() {
+  document.getElementById('typing')?.remove();
+}
+
+function renderHistory() {
+  chat.innerHTML = '';
+  messages.forEach(m => addSticker(m.content, m.role === 'user'? 'user' : 'ai'));
+}
+
+async function sendMessage() {
+  const text = input.value.trim();
+  if (!text) return;
+  if (!cfg.apiKey ||!cfg.baseUrl ||!cfg.model) {
+    addSticker('⚠️ Please set API Key, Base URL, and Model in Settings first.', 'error');
+    toggleSettings();
+    return;
+  }
+
+  input.value = '';
+  addSticker(text, 'user');
+  messages.push({role: 'user', content: text});
+  localStorage.setItem('chat_messages', JSON.stringify(messages));
+  showTyping();
+
+  try {
+    const body = {
+      model: cfg.model,
+      messages: [
+        {role: 'system', content: cfg.system},
+       ...messages.slice(-10) // last 10 for context
+      ],
+      temperature: cfg.temp,
+      max_tokens: cfg.maxTokens,
+      stream: false
+    };
+
+    const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cfg.apiKey}`
+      },
+      body: JSON.stringify(body)
+    });
+
+    hideTyping();
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`HTTP ${res.status}: ${err}`);
+    }
+
+    const data = await res.json();
+    const reply = data.choices?.[0]?.message?.content || 'No response';
+    addSticker(reply, 'ai');
+    messages.push({role: 'assistant', content: reply});
+    localStorage.setItem('chat_messages', JSON.stringify(messages));
+
+  } catch (e) {
+    hideTyping();
+    addSticker(`Error: ${e.message}`, 'error');
+  }
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' &&!e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function clearChat() {
+  if (confirm('Clear all messages?')) {
+    messages = [];
+    localStorage.removeItem('chat_messages');
+    renderHistory();
+  }
+}
+
+function exportChat() {
+  const data = JSON.stringify({config: {...cfg, apiKey: '***'}, messages}, null, 2);
+  const blob = new Blob([data], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'chat_export.json';
+  a.click();
+}
+
+// Auto-resize textarea
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = input.scrollHeight + 'px';
+});
+
+// Init
+loadSettings();
+renderHistory();
+if (!cfg.apiKey) setTimeout(() => toggleSettings(), 500);
+</script>
+</body>
+</html>
